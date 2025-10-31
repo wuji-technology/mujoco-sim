@@ -1,8 +1,7 @@
-
 #!/usr/bin/env python3
 """
-轨迹播放器 - 用于加载和播放预定义的关节轨迹
-支持多种轨迹格式：numpy数组、CSV、JSON等
+Trajectory player - used to load and play predefined joint trajectories.
+Supports multiple formats: numpy, CSV, JSON, etc.
 """
 import numpy as np
 import mujoco
@@ -13,112 +12,117 @@ import json
 
 
 class TrajectoryPlayer:
-    """灵巧手轨迹播放器"""
-    
+    """Dexterous hand trajectory player."""
+
     def __init__(self, model: mujoco.MjModel, data: mujoco.MjData):
         """
-        初始化轨迹播放器
-        
+        Initialize the trajectory player.
+
         Args:
-            model: MuJoCo模型
-            data: MuJoCo数据对象
+            model: MuJoCo model
+            data: MuJoCo data object
         """
         self.model = model
         self.data = data
         self.num_actuators = model.nu
-        
-        # 验证模型是否符合预期（20个执行器）
-        if self.num_actuators != 20:
-            print(f"警告: 模型有 {self.num_actuators} 个执行器，预期为20")
-    
+
+        # Log the actual actuator count
+        print(f"Info: model has {self.num_actuators} actuators")
+
     def load_trajectory_from_numpy(self, filepath: Union[str, Path]) -> Tuple[np.ndarray, float]:
         """
-        从.npy或.npz文件加载轨迹
-        
+        Load trajectory from .npy or .npz files.
+
         Args:
-            filepath: 轨迹文件路径
-            
+            filepath: path to trajectory file
+
         Returns:
-            trajectory: shape=(T, 20)的轨迹数组
-            dt: 时间步长（秒）
+            trajectory: array with shape (T, num_actuators)
+            dt: time step in seconds
         """
         filepath = Path(filepath)
-        
+
         if filepath.suffix == '.npy':
-            trajectory = np.load(filepath)
-            dt = 0.02  # 默认50Hz
+            trajectory = np.load(filepath, allow_pickle=False)
+            dt = 0.02  # default 50Hz
         elif filepath.suffix == '.npz':
-            data = np.load(filepath)
+            data = np.load(filepath, allow_pickle=False)
+            if 'positions' not in data:
+                raise ValueError(f"NPZ file missing 'positions' key: {filepath}")
             trajectory = data['positions']
             dt = float(data.get('dt', 0.02))
         else:
-            raise ValueError(f"不支持的文件格式: {filepath.suffix}")
-        
-        # 验证形状
-        if trajectory.ndim != 2 or trajectory.shape[1] != 20:
-            raise ValueError(f"轨迹形状错误: {trajectory.shape}，期望 (T, 20)")
-        
-        print(f"已加载轨迹: {trajectory.shape[0]} 帧, dt={dt}s")
+            raise ValueError(f"Unsupported file format: {filepath.suffix}")
+
+        # Validate shape
+        if trajectory.ndim != 2 or trajectory.shape[1] != self.num_actuators:
+            raise ValueError(f"Trajectory shape mismatch: {trajectory.shape}, expected (T, {self.num_actuators})")
+
+        print(f"Loaded trajectory: {trajectory.shape[0]} frames, dt={dt}s")
         return trajectory, dt
-    
+
     def load_trajectory_from_csv(self, filepath: Union[str, Path]) -> Tuple[np.ndarray, float]:
         """
-        从CSV文件加载轨迹
-        CSV格式: 每行20列代表20个关节位置，第一行可选时间步
+        Load trajectory from CSV.
+        CSV format: each row contains num_actuators columns; optionally the first row is a single number representing dt.
         """
         filepath = Path(filepath)
         data = np.loadtxt(filepath, delimiter=',')
-        
-        # 检查第一行是否是单个数字（时间步）
-        if data.shape[0] > 1 and data.shape[1] == 1:
+
+        # If the first row has only one column and there are more than one row, treat it as dt
+        if data.ndim == 2 and data.shape[0] > 1 and data.shape[1] == 1:
             dt = float(data[0, 0])
             trajectory = data[1:]
         else:
+            # If loadtxt returns 1D array (single-row CSV), reshape to 2D
+            if data.ndim == 1:
+                trajectory = data.reshape(1, -1)
+            else:
+                trajectory = data
             dt = 0.02
-            trajectory = data
-        
-        if trajectory.shape[1] != 20:
-            raise ValueError(f"CSV列数错误: {trajectory.shape[1]}，期望20列")
-        
-        print(f"已加载轨迹: {trajectory.shape[0]} 帧, dt={dt}s")
+
+        if trajectory.shape[1] != self.num_actuators:
+            raise ValueError(f"CSV column count mismatch: {trajectory.shape[1]}, expected {self.num_actuators}")
+
+        print(f"Loaded trajectory: {trajectory.shape[0]} frames, dt={dt}s")
         return trajectory, dt
-    
+
     def load_trajectory_from_json(self, filepath: Union[str, Path]) -> Tuple[np.ndarray, float]:
         """
-        从JSON文件加载轨迹
-        JSON格式: {"dt": 0.02, "positions": [[...], [...], ...]}
+        Load trajectory from JSON.
+        JSON format: {"dt": 0.02, "positions": [[...], [...], ...]}
         """
         filepath = Path(filepath)
         with open(filepath, 'r') as f:
             data = json.load(f)
-        
+
         trajectory = np.array(data['positions'])
         dt = data.get('dt', 0.02)
-        
-        if trajectory.shape[1] != 20:
-            raise ValueError(f"轨迹形状错误: {trajectory.shape}，期望 (T, 20)")
-        
-        print(f"已加载轨迹: {trajectory.shape[0]} 帧, dt={dt}s")
+
+        if trajectory.shape[1] != self.num_actuators:
+            raise ValueError(f"Trajectory shape mismatch: {trajectory.shape}, expected (T, {self.num_actuators})")
+
+        print(f"Loaded trajectory: {trajectory.shape[0]} frames, dt={dt}s")
         return trajectory, dt
-    
+
     def load_trajectory(self, filepath: Union[str, Path]) -> Tuple[np.ndarray, float]:
         """
-        自动识别格式并加载轨迹
-        
+        Auto-detect format and load a trajectory.
+
         Args:
-            filepath: 轨迹文件路径
-            
+            filepath: path to trajectory file
+
         Returns:
-            trajectory: shape=(T, 20)的轨迹数组
-            dt: 时间步长（秒）
+            trajectory: array with shape (T, num_actuators)
+            dt: time step in seconds
         """
         filepath = Path(filepath)
-        
+
         if not filepath.exists():
-            raise FileNotFoundError(f"轨迹文件不存在: {filepath}")
-        
+            raise FileNotFoundError(f"Trajectory file not found: {filepath}")
+
         suffix = filepath.suffix.lower()
-        
+
         if suffix in ['.npy', '.npz']:
             return self.load_trajectory_from_numpy(filepath)
         elif suffix == '.csv':
@@ -126,154 +130,142 @@ class TrajectoryPlayer:
         elif suffix == '.json':
             return self.load_trajectory_from_json(filepath)
         else:
-            raise ValueError(f"不支持的文件格式: {suffix}")
-    
+            raise ValueError(f"Unsupported file format: {suffix}")
+
     def set_joint_positions(self, positions: np.ndarray):
         """
-        设置关节目标位置
-        
+        Set joint target positions.
+
         Args:
-            positions: shape=(20,)的关节位置数组
+            positions: 1D array with length num_actuators
         """
         if positions.shape[0] != self.num_actuators:
-            raise ValueError(f"位置数组长度错误: {positions.shape[0]}，期望 {self.num_actuators}")
-        
-        # 直接设置控制目标
+            raise ValueError(f"Position array length mismatch: {positions.shape[0]}, expected {self.num_actuators}")
+
+        # Directly set control targets
         self.data.ctrl[:] = positions
-    
-    def play_trajectory(self, trajectory: np.ndarray, dt: float, 
+
+    def play_trajectory(self, trajectory: np.ndarray, dt: float,
                        loop: bool = False, speed: float = 1.0,
                        verbose: bool = True):
         """
-        播放轨迹（阻塞式，用于非GUI模式）
-        
+        Play trajectory in blocking mode (for non-GUI usage).
+
         Args:
-            trajectory: shape=(T, 20)的轨迹数组
-            dt: 时间步长（秒）
-            loop: 是否循环播放
-            speed: 播放速度倍数（1.0=正常速度，2.0=2倍速）
-            verbose: 是否打印进度
+            trajectory: (T, num_actuators) trajectory array
+            dt: timestep in seconds
+            loop: whether to loop playback
+            speed: playback speed multiplier (1.0 = normal)
+            verbose: print progress if True
         """
         actual_dt = dt / speed
         num_frames = trajectory.shape[0]
-        
+
         if verbose:
-            print(f"开始播放轨迹: {num_frames} 帧, 持续 {num_frames * dt:.2f}秒")
-        
+            print(f"Starting playback: {num_frames} frames, duration {num_frames * dt:.2f}s")
+
         frame_idx = 0
         try:
             while True:
                 start_time = time.time()
-                
-                # 设置目标位置
+
+                # Apply positions
                 self.set_joint_positions(trajectory[frame_idx])
-                
-                # 仿真步进
+
+                # Step simulator
                 mujoco.mj_step(self.model, self.data)
-                
-                # 控制播放速度
+
+                # Control playback timing
                 elapsed = time.time() - start_time
                 sleep_time = max(0, actual_dt - elapsed)
                 time.sleep(sleep_time)
-                
-                # 更新帧索引
+
+                # Advance frame
                 frame_idx += 1
                 if frame_idx >= num_frames:
                     if loop:
                         frame_idx = 0
                         if verbose:
-                            print("轨迹循环播放...")
+                            print("Looping trajectory...")
                     else:
                         if verbose:
-                            print("轨迹播放完成")
+                            print("Playback finished")
                         break
-                
+
         except KeyboardInterrupt:
             if verbose:
-                print("\n播放已停止")
-    
+                print("\nPlayback interrupted")
+
     def get_trajectory_generator(self, trajectory: np.ndarray, dt: float,
-                                loop: bool = False, speed: float = 1.0):
+                                 loop: bool = False, speed: float = 1.0):
         """
-        返回轨迹生成器（用于与viewer集成）
-        
+        Return a generator for trajectory frames (used with viewer integration).
+
         Args:
-            trajectory: shape=(T, 20)的轨迹数组
-            dt: 时间步长（秒）
-            loop: 是否循环播放
-            speed: 播放速度倍数
-            
+            trajectory: (T, num_actuators) trajectory array
+            dt: timestep in seconds
+            loop: whether to loop playback
+            speed: playback speed multiplier
+
         Yields:
-            关节位置数组 shape=(20,)
+            1D array of joint positions (length num_actuators)
         """
         actual_dt = dt / speed
         num_frames = trajectory.shape[0]
         frame_idx = 0
         last_time = time.time()
-        
+
         while True:
             current_time = time.time()
-            
-            # 检查是否到达下一帧的时间
             if current_time - last_time >= actual_dt:
                 yield trajectory[frame_idx]
                 last_time = current_time
-                
                 frame_idx += 1
                 if frame_idx >= num_frames:
                     if loop:
                         frame_idx = 0
                     else:
-                        break
+                        return
             else:
-                # 保持当前帧
-                yield trajectory[frame_idx]
+                # Avoid busy-waiting
+                time.sleep(min(0.001, actual_dt / 10.0))
 
 
 def create_sample_trajectories(output_dir: Union[str, Path] = "trajectories"):
     """
-    创建示例轨迹文件
+    Create sample trajectory files. Saves only .npy files (keeps loader backward-compatible).
     """
     output_dir = Path(output_dir)
     output_dir.mkdir(exist_ok=True)
-    
-    print(f"创建示例轨迹到: {output_dir}")
-    
-    # 波浪手势（手指依次弯曲）
+
+    print(f"Creating sample trajectories in: {output_dir}")
+
+    # Wave gesture: fingers curl in sequence
     def generate_wave_trajectory(num_frames=150):
-        """生成波浪轨迹"""
+        """Generate a wave trajectory"""
         trajectory = np.zeros((num_frames, 20))
-        
+
         for i in range(num_frames):
             for finger in range(5):
-                # 每根手指延迟1/5周期
+                # Each finger delayed by 1/5 of the cycle
                 phase = (i / num_frames - finger * 0.2) * 2 * np.pi
-                flex = (np.sin(phase) + 1) / 2  # 0到1
-                
+                flex = (np.sin(phase) + 1) / 2  # ranges from 0 to 1
+
                 trajectory[i, finger*4 + 2] = 0.8 * flex
                 trajectory[i, finger*4 + 3] = 0.8 * flex
-        
+
         return trajectory
-    
-    # 仅保存波浪轨迹（JSON 为主要交互格式）
+
     traj = generate_wave_trajectory()
 
-    # 只保存 JSON（保留常用的 npz/npy/csv 代码可在需要时恢复）
-    with open(output_dir / f"wave.json", 'w') as f:
-        json.dump({
-            'dt': 0.02,
-            'description': 'wave',
-            'positions': traj.tolist()
-        }, f, indent=2)
+    # Save only .npy (loader remains compatible with other formats)
+    np.save(output_dir / "wave.npy", traj)
 
-    # 同时保存 npz 以兼容旧流程
-    np.savez(output_dir / "wave.npz", positions=traj, dt=0.02, description='wave')
-
-    print(f"  - 已创建 wave 轨迹 ({traj.shape[0]} 帧) 到 {output_dir}")
-    print("示例轨迹创建完成！")
+    print(f"  - Created wave trajectory ({traj.shape[0]} frames) in {output_dir}")
+    print("Sample trajectories creation complete!")
 
 
 if __name__ == "__main__":
-    print("轨迹播放器模块")
-    print("创建示例轨迹...")
+    print("Trajectory player module")
+    print("Creating sample trajectories...")
     create_sample_trajectories()

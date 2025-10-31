@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-演示程序：加载并播放预定义轨迹
+Demo: load and play predefined trajectories.
 """
 import argparse
 import mujoco
@@ -9,147 +9,147 @@ import numpy as np
 from pathlib import Path
 import sys
 
-# 导入轨迹播放器
+# Import the trajectory player
 from modules.trajectory_player import TrajectoryPlayer, create_sample_trajectories
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="WujiHand 轨迹播放演示")
+    parser = argparse.ArgumentParser(description="WujiHand trajectory playback demo")
     parser.add_argument(
         "-s", "--side",
         choices=["left", "right"],
         default="right",
-        help="选择左手或右手模型（默认: right）"
+        help="Which hand model to use (default: right)"
     )
     parser.add_argument(
         "-t", "--trajectory",
         type=str,
         default="trajectories/wave.json",
-        help="轨迹文件路径（默认: trajectories/wave.json）"
+        help="Path to trajectory file (default: trajectories/wave.json)"
     )
     parser.add_argument(
         "-l", "--loop",
         action="store_true",
-        help="循环播放轨迹"
+        help="Loop the trajectory playback"
     )
     parser.add_argument(
         "--speed",
         type=float,
         default=1.0,
-        help="播放速度倍数（默认: 1.0）"
+        help="Playback speed multiplier (default: 1.0)"
     )
     parser.add_argument(
         "--nogui",
         action="store_true",
-        help="无GUI模式（仅仿真，不打开viewer）"
+        help="Run without GUI (simulation only)"
     )
     parser.add_argument(
         "--create-samples",
         action="store_true",
-        help="创建示例轨迹文件后退出"
+        help="Create sample trajectory files and exit"
     )
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
-    
-    # 如果只是创建示例轨迹
+
+    # If requested, only create sample trajectories
     if args.create_samples:
         create_sample_trajectories()
         return
-    
-    print(f"WujiHand 轨迹播放演示 - {args.side}手")
-    
-    # 加载MuJoCo模型
+
+    print(f"WujiHand trajectory playback demo - {args.side} hand")
+
+    # Load MuJoCo model
     mjcf_path = Path(__file__).parent / "xml" / f"{args.side}.xml"
-    
+
     if not mjcf_path.exists():
-        print(f"错误: 模型文件不存在: {mjcf_path}")
+        print(f"Error: model file not found: {mjcf_path}")
         return
-    
+
     model = mujoco.MjModel.from_xml_path(str(mjcf_path))
     data = mujoco.MjData(model)
-    
-    # 初始化到中位
-    print("初始化关节位置...")
+
+    # Initialize to mid positions
+    print("Initializing joint positions...")
     for i in range(model.nu):
         if model.actuator_ctrllimited[i]:
             ctrl_range = model.actuator_ctrlrange[i]
             data.ctrl[i] = (ctrl_range[0] + ctrl_range[1]) / 2
         else:
             data.ctrl[i] = 0.0
-    
-    # 预热仿真
+
+    # Warm up simulation
     for _ in range(100):
         mujoco.mj_step(model, data)
-    
-    # 创建轨迹播放器
+
+    # Create the trajectory player
     player = TrajectoryPlayer(model, data)
-    
-    # 加载轨迹
+
+    # Load trajectory file
     traj_path = Path(args.trajectory)
     if not traj_path.exists():
-        print(f"错误: 轨迹文件不存在: {traj_path}")
-        print("提示: 运行 'python demo_trajectory.py --create-samples' 创建示例轨迹")
+        print(f"Error: trajectory file not found: {traj_path}")
+        print("Tip: run 'python demo_trajectory.py --create-samples' to create sample trajectories")
         return
-    
+
     try:
         trajectory, dt = player.load_trajectory(traj_path)
     except Exception as e:
-        print(f"加载轨迹失败: {e}")
+        print(f"Failed to load trajectory: {e}")
         import traceback
         traceback.print_exc()
         return
-    
-    print(f"轨迹时长: {trajectory.shape[0] * dt:.2f}秒")
-    print(f"播放设置: 速度={args.speed}x, 循环={'是' if args.loop else '否'}")
-    
+
+    print(f"Trajectory duration: {trajectory.shape[0] * dt:.2f} seconds")
+    print(f"Playback settings: speed={args.speed}x, loop={'yes' if args.loop else 'no'}")
+
     if args.nogui:
-        # 无GUI模式：阻塞式播放
-        print("开始播放（无GUI）...")
+        # Non-GUI blocking playback
+        print("Starting playback (nogui)...")
         player.play_trajectory(trajectory, dt, loop=args.loop, speed=args.speed)
     else:
-        # 带GUI模式：使用viewer
-        print("启动MuJoCo Viewer...")
-        print("提示: 在viewer中可以暂停/恢复、调整视角")
-        
-        # 使用生成器控制轨迹
-        traj_gen = player.get_trajectory_generator(trajectory, dt, 
+        # GUI playback using viewer
+        print("Launching MuJoCo Viewer...")
+        print("Tip: you can pause/resume and change the view in the viewer")
+
+        # Use a generator to control trajectory playback
+        traj_gen = player.get_trajectory_generator(trajectory, dt,
                                                    loop=args.loop, speed=args.speed)
-        
-        # 自定义仿真循环
+
+        # Custom simulation loop
         frame_count = 0
-        
+
         def controller(model, data):
-            """在每个仿真步调用"""
+            """Called on each simulation step."""
             nonlocal frame_count
             try:
                 positions = next(traj_gen)
                 data.ctrl[:] = positions
                 frame_count += 1
             except StopIteration:
-                print(f"\n轨迹播放完成 ({frame_count} 帧)")
-                # 保持最后的姿态
+                print(f"\nTrajectory playback finished ({frame_count} frames)")
+                # Keep the final pose
                 pass
-        
-        # 启动viewer并注入控制器
+
+        # Launch viewer and inject controller
         with mujoco.viewer.launch_passive(model, data) as viewer:
-            print("Viewer已启动，按ESC退出")
-            
+            print("Viewer started, press ESC to exit")
+
             while viewer.is_running():
                 step_start = data.time
-                
-                # 调用控制器
+
+                # Call the controller
                 controller(model, data)
-                
-                # 仿真步进
+
+                # Step the simulator
                 mujoco.mj_step(model, data)
-                
-                # 同步viewer
+
+                # Sync viewer
                 viewer.sync()
-                
-                # 控制实时播放速度
+
+                # Control real-time playback speed
                 time_until_next_step = model.opt.timestep - (data.time - step_start)
                 if time_until_next_step > 0:
                     import time
@@ -160,9 +160,9 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\n程序已停止")
+        print("\nProgram interrupted")
     except Exception as e:
-        print(f"错误: {e}")
+        print(f"Error: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
