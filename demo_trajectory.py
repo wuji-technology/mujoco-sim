@@ -24,8 +24,8 @@ def parse_args():
     parser.add_argument(
         "-t", "--trajectory",
         type=str,
-        default="trajectories/fist.npz",
-        help="轨迹文件路径（默认: trajectories/fist.npz）"
+        default="trajectories/wave.json",
+        help="轨迹文件路径（默认: trajectories/wave.json）"
     )
     parser.add_argument(
         "-l", "--loop",

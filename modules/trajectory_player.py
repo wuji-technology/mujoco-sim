@@ -239,55 +239,7 @@ def create_sample_trajectories(output_dir: Union[str, Path] = "trajectories"):
     
     print(f"创建示例轨迹到: {output_dir}")
     
-    # 1. 握拳动作（从展开到握紧）
-    def generate_fist_trajectory(num_frames=100):
-        """生成握拳轨迹"""
-        trajectory = np.zeros((num_frames, 20))
-        
-        for i in range(num_frames):
-            t = i / (num_frames - 1)  # 0到1
-            
-            # 每根手指的4个关节
-            for finger in range(5):
-                # joint1 (abduction): 保持中位
-                trajectory[i, finger*4 + 0] = 0.3 * t if finger == 0 else 0.0
-                # joint2 (proximal flex): 从0到0.4
-                trajectory[i, finger*4 + 1] = 0.4 * t
-                # joint3 (middle flex): 从0到1.0
-                trajectory[i, finger*4 + 2] = 1.0 * t
-                # joint4 (distal flex): 从0到1.2
-                trajectory[i, finger*4 + 3] = 1.2 * t
-        
-        return trajectory
-    
-    # 2. 捏取动作（拇指和食指）
-    def generate_pinch_trajectory(num_frames=80):
-        """生成捏取轨迹"""
-        trajectory = np.zeros((num_frames, 20))
-        
-        for i in range(num_frames):
-            t = i / (num_frames - 1)
-            
-            # 拇指 (finger 0)
-            trajectory[i, 0] = 0.8 * t  # abduction
-            trajectory[i, 1] = 0.3 * t  # flex
-            trajectory[i, 2] = 0.5 * t
-            trajectory[i, 3] = 0.4 * t
-            
-            # 食指 (finger 1)
-            trajectory[i, 4] = -0.2 * t  # 向拇指靠拢
-            trajectory[i, 5] = 0.0
-            trajectory[i, 6] = 0.6 * t
-            trajectory[i, 7] = 0.5 * t
-            
-            # 其他手指微微弯曲
-            for finger in range(2, 5):
-                trajectory[i, finger*4 + 2] = 0.3 * t
-                trajectory[i, finger*4 + 3] = 0.3 * t
-        
-        return trajectory
-    
-    # 3. 波浪手势（手指依次弯曲）
+    # 波浪手势（手指依次弯曲）
     def generate_wave_trajectory(num_frames=150):
         """生成波浪轨迹"""
         trajectory = np.zeros((num_frames, 20))
@@ -303,35 +255,21 @@ def create_sample_trajectories(output_dir: Union[str, Path] = "trajectories"):
         
         return trajectory
     
-    # 保存为不同格式
-    trajectories = {
-        'fist': generate_fist_trajectory(),
-        'pinch': generate_pinch_trajectory(),
-        'wave': generate_wave_trajectory()
-    }
-    
-    for name, traj in trajectories.items():
-        # NPZ格式（推荐，包含元数据）
-        np.savez(output_dir / f"{name}.npz", 
-                positions=traj, dt=0.02, description=name)
-        
-        # NPY格式（简单）
-        np.save(output_dir / f"{name}.npy", traj)
-        
-        # CSV格式（可读性好）
-        np.savetxt(output_dir / f"{name}.csv", traj, delimiter=',', 
-                  fmt='%.6f', header='20 joint positions per row')
-        
-        # JSON格式（跨语言）
-        with open(output_dir / f"{name}.json", 'w') as f:
-            json.dump({
-                'dt': 0.02,
-                'description': name,
-                'positions': traj.tolist()
-            }, f, indent=2)
-        
-        print(f"  - 已创建 {name} 轨迹 ({traj.shape[0]} 帧)")
-    
+    # 仅保存波浪轨迹（JSON 为主要交互格式）
+    traj = generate_wave_trajectory()
+
+    # 只保存 JSON（保留常用的 npz/npy/csv 代码可在需要时恢复）
+    with open(output_dir / f"wave.json", 'w') as f:
+        json.dump({
+            'dt': 0.02,
+            'description': 'wave',
+            'positions': traj.tolist()
+        }, f, indent=2)
+
+    # 同时保存 npz 以兼容旧流程
+    np.savez(output_dir / "wave.npz", positions=traj, dt=0.02, description='wave')
+
+    print(f"  - 已创建 wave 轨迹 ({traj.shape[0]} 帧) 到 {output_dir}")
     print("示例轨迹创建完成！")
 
 
