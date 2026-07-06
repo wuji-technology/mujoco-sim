@@ -4,7 +4,7 @@
 
 Simulation demo for MuJoCo. This repository provides a minimal example for loading and controlling the Wuji Hand in MuJoCo simulator. Loads MJCF models from the description submodule and plays pre-recorded trajectories in a loop.
 
-**Get started with [Quick Start](#quick-start). For detailed documentation, please refer to [Wuji Hand Description Guide — MuJoCo Simulation](https://docs.wuji.tech/docs/en/wuji-hand/latest/wuji-hand-description-guide/#331-mujoco-simulation-example) on Wuji Docs Center.**
+**Get started with [Quick Start](#quick-start). For detailed documentation, please refer to [MuJoCo Simulation Example](https://docs.wuji.tech/docs/en/wuji-description/latest/related-repos/#41-mujoco-simulation-example) on Wuji Docs Center.**
 
 https://github.com/user-attachments/assets/4b3d6d5c-420e-4e15-bbe7-68bcad9729f0
 
